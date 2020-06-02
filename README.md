@@ -12,7 +12,9 @@ using LivingThing.LiveBlazor;
 
 Initialize it
 ```
-Blazor.Live()
+Blazor.Live(new LiveConfiguration(){
+RazoGeneratePath = @"C:\Program Files\dotnet\sdk\3.1.202\Sdks\Microsoft.NET.Sdk.Razor\tools\netcoreapp3.0\rzc.dll"; //replace as neccessary
+})
 ```
 
 You are done.
