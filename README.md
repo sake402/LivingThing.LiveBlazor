@@ -1,6 +1,6 @@
 # LivingThing.LiveBlazor
 ---
-Update Blazor component in realtime without losing component state, withour reloading
+Update Blazor component in realtime without losing component state, without reloading
 
 Usage
 ---
