@@ -39,6 +39,7 @@ We patch the original ``BuildRenderTree`` method replacing its IL code with the 
 What is not working yet
 ---
 For some unknown reason, if after patching the ``BuildRenderTree`` one type, we also try to patch another ``BuildRenderTree`` entirely different from the first one, Harmony throws exception. This happens when you have editted A.razor and then try to edit B.razor.
+
 If a new patch contains a branch instruction, exception. Converting the MethodInfo.GetILAsByteArray() to opcodes is not perfect yet.
 
 
