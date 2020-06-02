@@ -25,7 +25,9 @@ So If you have a component in a class library, you want to make sure the library
 _ = typeof(Namespace.TypeInAssemby).Assemby
 ```
 We then use [Harmony](https://github.com/pardeike/Harmony) project to patch the found types inserting prefix call into their ``BuildRenderTree`` function
+
 This is so we can keep a track of every instance of a type created so far and can therefore automatically call their StateHasChanged when the razor file changes.
+
 TODO: Remove component from the static collection when disposed to avoid memory hog.
 
 We setup a FileWatcher on the project or solution directory so we know when a razor file is changed. 
