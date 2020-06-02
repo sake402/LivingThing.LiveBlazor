@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reactive.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using HarmonyLib;
 using Microsoft.AspNetCore.Components;
 using RxFileSystemWatcher;
@@ -95,7 +96,7 @@ namespace LivingThing.LiveBlazor
             return GetProjectPath(path);
         }
 
-        public static void Live(LiveConfiguration configuration = null)
+        public static async Task Live(LiveConfiguration configuration = null)
         {
             //Extract LiveBlazor.zip to a temporary folter
             //var stream = typeof(LiveBlazor).Assembly.GetManifestResourceStream("LivingThing.LiveBlazor.LiveBlazor.zip");
@@ -112,6 +113,10 @@ namespace LivingThing.LiveBlazor
             //ZipFile.ExtractToDirectory(zipPath, workingDirectory, true);
             ////prebuild project enabling restore, so we dont have to restor anymore, which is faster
             //$"cd {workingDirectory} & dotnet build".Bash();
+
+            string dotnetPath = (await "where dotnet".CLI()).StdOut.Trim();
+            string dotnetVersion = (await "dotnet --version".CLI()).StdOut.Trim();
+            var dotnetFolder = Path.GetDirectoryName(dotnetPath) + "\\";
 
             var harmony = new Harmony("com.liveblazor.livingthing");
             var invokeAsync = typeof(ComponentBase).GetMethod("InvokeAsync", bindingAttr:BindingFlags.NonPublic | BindingFlags.Instance, types:new Type[] { typeof(Action) }, binder:null, modifiers:null);
@@ -150,7 +155,7 @@ namespace LivingThing.LiveBlazor
 
             changes.Subscribe(async filepath =>
             {
-                string razorGeneratePath = configuration?.RazoGeneratePath ?? @"C:\Program Files\dotnet\sdk\3.1.202\Sdks\Microsoft.NET.Sdk.Razor\tools\netcoreapp3.0\rzc.dll";
+                string razorGeneratePath = configuration?.RazoGeneratePath ?? @$"{dotnetFolder}sdk\{dotnetVersion}\Sdks\Microsoft.NET.Sdk.Razor\tools\netcoreapp3.0\rzc.dll";
                 var project = GetProjectPath(Path.GetDirectoryName(filepath.FullPath));
                 string projectName = Path.GetFileNameWithoutExtension(project.FileName);
                 var workspace = $"obj\\Debug\\{project.Type}\\";

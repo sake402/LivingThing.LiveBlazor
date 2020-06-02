@@ -9,11 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Remove="LiveBlazor.zip" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <EmbeddedResource Include="LiveBlazor.zip" />
+    <None Remove=".zip" />
   </ItemGroup>
 
   <ItemGroup>
