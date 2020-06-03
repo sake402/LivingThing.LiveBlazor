@@ -15,15 +15,17 @@ namespace LivingThing.LiveBlazor
 {
     public class LiveConfiguration
     {
-        public string RazoGeneratePath { get; set; }
+        public string RazoGeneratorPath { get; set; }
         public string ProjectConfiguration { get; set; }
         public string WatchDirectory { get; set; }
+        public Func<Type, Type[]> Filter { get; set; }
     }
     internal class LiveComponentContext
     {
         public MethodInfo OriginalMethod { get; set; }
+        public Type OriginalTypeInference { get; set; }
         public Type NewType { get; set; }
-        public MethodInfo Replacer { get; set; }
+        //public MethodInfo Replacer { get; set; }
         public List<ComponentBase> Components { get; set; } = new List<ComponentBase>();
     }
 
@@ -41,14 +43,13 @@ namespace LivingThing.LiveBlazor
         public static bool Prefix(ComponentBase __instance)
         {
             var type = __instance.GetType();
-            if (!liveContexts.ContainsKey(type))
+            if (liveContexts.ContainsKey(type))
             {
-                liveContexts[type] = new LiveComponentContext();
-            }
-            var context = liveContexts[type];
-            if (!context.Components.Contains(__instance))
-            {
-                context.Components.Add(__instance);
+                var context = liveContexts[type];
+                if (!context.Components.Contains(__instance))
+                {
+                    context.Components.Add(__instance);
+                }
             }
             //if (context.NewType != null)
             //{
@@ -60,21 +61,18 @@ namespace LivingThing.LiveBlazor
             return true;
         }
 
-        static Type currentType;
-        public static IEnumerable<CodeInstruction> ReplaceBuildRenderTree/*<TComponent>*/(IEnumerable<CodeInstruction> instructions, ILGenerator generator)
+        static IEnumerable<CodeInstruction> Replace(Type newType, ILGenerator generator, MethodBase originalMethod)
         {
-            var context = liveContexts[currentType];//[typeof(TComponent)];
-            Type newCompiledType = context.NewType;
-            var newRenderTree = newCompiledType.GetMethod("BuildRenderTree", BindingFlags.NonPublic | BindingFlags.Instance);
+            var newMethod = newType.GetMethod(originalMethod.Name, BindingFlags.NonPublic | BindingFlags.Instance);
 
-            var newInstructions = newRenderTree.GetInstructions();
+            var newInstructions = newMethod.GetInstructions();
             var labelledInstructions = newInstructions.Where(l => l.Operand is Instruction);
             Dictionary<Instruction, Label> instructionLabels = new Dictionary<Instruction, Label>();
-            foreach(var instruction in labelledInstructions)
+            foreach (var instruction in labelledInstructions)
             {
                 instructionLabels[instruction.Operand as Instruction] = generator.DefineLabel();
             }
-            foreach(var instruction in newInstructions)
+            foreach (var instruction in newInstructions)
             {
                 Label label;
                 if (instructionLabels.TryGetValue(instruction, out label))
@@ -95,7 +93,7 @@ namespace LivingThing.LiveBlazor
                             case sbyte i:
                                 //STRANGE: pushing an int8 onto stack throws object reference exception
                                 //so we change the instruction to push int32
-                                if (instruction.OpCode == OpCodes.Ldc_I4_S) 
+                                if (instruction.OpCode == OpCodes.Ldc_I4_S)
                                 {
                                     generator.Emit(OpCodes.Ldc_I4, (int)i);
                                 }
@@ -108,6 +106,9 @@ namespace LivingThing.LiveBlazor
                                 generator.Emit(instruction.OpCode, i);
                                 break;
                             case uint i:
+                                generator.Emit(instruction.OpCode, i);
+                                break;
+                            case short i:
                                 generator.Emit(instruction.OpCode, i);
                                 break;
                             case long i:
@@ -128,8 +129,33 @@ namespace LivingThing.LiveBlazor
                             case MethodInfo i:
                                 generator.Emit(instruction.OpCode, i);
                                 break;
+                            case ConstructorInfo i:
+                                generator.Emit(instruction.OpCode, i);
+                                break;
+                            case FieldInfo i:
+                                generator.Emit(instruction.OpCode, i);
+                                break;
+                            case Label i:
+                                generator.Emit(instruction.OpCode, i);
+                                break;
+                            case Label[] i:
+                                generator.Emit(instruction.OpCode, i);
+                                break;
+                            case LocalBuilder i:
+                                generator.Emit(instruction.OpCode, i);
+                                break;
+                            case SignatureHelper i:
+                                generator.Emit(instruction.OpCode, i);
+                                break;
+                            case LocalVariableInfo i:
+                                generator.DeclareLocal(i.LocalType);
+                                generator.Emit(instruction.OpCode, i.LocalIndex);
+                                break;
+                            //case ParameterInfo i:
+                            //    generator.Emit(instruction.OpCode, i.Position);
+                            //    break;
                             default:
-                                if (instruction.Operand  != null)
+                                if (instruction.Operand != null)
                                 {
                                     throw new Exception($"UnImplemented Instruction {instruction.OpCode} with operand {instruction.Operand}");
                                 }
@@ -200,21 +226,21 @@ namespace LivingThing.LiveBlazor
             //            break;
             //    }
             //}
-
-
-            //return newCodes.Select(c => new CodeInstruction(c.Key, c.Value)).ToArray();
-            //var newInstructions = newRenderTree.GetInstructions();
-            //var newCodeInstructions = newInstructions.Select(i =>
-            //{
-            //    //var operand = i.Operand;
-            //    //if (operand is Instruction ins)
-            //    //{
-            //    //    operand = new CodeInstruction(ins.OpCode, ins.Operand);
-            //    //}
-            //    return new CodeInstruction(i.OpCode, operand);
-            //}).ToArray();
-            //return newCodeInstructions;
             return new CodeInstruction[] { new CodeInstruction(OpCodes.Ret) };
+        }
+
+        static Type currentType;
+        public static IEnumerable<CodeInstruction> ReplaceBuildRenderTree/*<TComponent>*/(IEnumerable<CodeInstruction> instructions, ILGenerator generator, MethodBase originalMethod)
+        {
+            var context = liveContexts[currentType];//[typeof(TComponent)];
+            Type newCompiledType = context.NewType;
+            return Replace(newCompiledType, generator, originalMethod);
+        }
+
+        static Type currentTypeInference;
+        public static IEnumerable<CodeInstruction> ReplaceTypeInference(IEnumerable<CodeInstruction> instructions, ILGenerator generator, MethodBase originalMethod)
+        {
+            return Replace(currentTypeInference, generator, originalMethod);
         }
 
         static ProjectInfo GetProjectPath(string path)
@@ -275,14 +301,35 @@ namespace LivingThing.LiveBlazor
             var stateHasChanged = typeof(ComponentBase).GetMethod("StateHasChanged", BindingFlags.NonPublic | BindingFlags.Instance);
 
             //find all components in all assemblies
-            var componentTypes = AppDomain.CurrentDomain.GetAssemblies().SelectMany(a => a.GetTypes()).Where(t => !t.IsAbstract && !t.ContainsGenericParameters && t.MemberType == MemberTypes.TypeInfo && typeof(ComponentBase).IsAssignableFrom(t)).ToArray();
+            var componentTypes = AppDomain.CurrentDomain.GetAssemblies().SelectMany(a => a.GetTypes()).Where(t => !t.IsAbstract && t.MemberType == MemberTypes.TypeInfo && typeof(ComponentBase).IsAssignableFrom(t)).ToArray();
             var prefix = typeof(Blazor).GetMethod(nameof(Prefix));
-            foreach (var type in componentTypes)
+            foreach (var _type in componentTypes)
             {
-                var renderTree = type.GetMethod("BuildRenderTree", BindingFlags.NonPublic | BindingFlags.Instance);
-                if (renderTree.DeclaringType == type)
+                var types = configuration?.Filter?.Invoke(_type) ?? new Type[] { _type };
+                foreach (var type in types)
                 {
-                    harmony.Patch(renderTree, new HarmonyMethod(prefix));
+                    if (!typeof(ComponentBase).IsAssignableFrom(type))
+                    {
+                        throw new InvalidOperationException($"Type {type} is not a Component");
+                    }
+                    if (!type.ContainsGenericParameters)
+                    {
+                        var renderTree = type.GetMethod("BuildRenderTree", BindingFlags.NonPublic | BindingFlags.Instance);
+                        if (renderTree.DeclaringType == type)
+                        {
+                            if (type.Name == "DeviceListItem")
+                            {
+
+                            }
+                            var context = new LiveComponentContext()
+                            {
+                                OriginalMethod = type.GetMethod("BuildRenderTree", BindingFlags.NonPublic | BindingFlags.Instance),
+                                OriginalTypeInference = type.Assembly.GetType("__Blazor." + type.FullName + ".TypeInference"),
+                            };
+                            liveContexts[type] = context;
+                            harmony.Patch(renderTree, new HarmonyMethod(prefix));
+                        }
+                    }
                 }
             }
 
@@ -317,9 +364,12 @@ namespace LivingThing.LiveBlazor
             string dotnetVersion = (await "dotnet --version".CLI()).StdOut.Trim();
             var dotnetFolder = Path.GetDirectoryName(dotnetPath) + "\\";
 
+            var buildRenderTreeMethodPatcher = typeof(Blazor).GetMethod(nameof(ReplaceBuildRenderTree));
+            var typeInferenceMethodsPatcher = typeof(Blazor).GetMethod(nameof(ReplaceTypeInference));
+
             changes.Subscribe(async filepath =>
             {
-                string razorGeneratePath = configuration?.RazoGeneratePath ?? @$"{dotnetFolder}sdk\{dotnetVersion}\Sdks\Microsoft.NET.Sdk.Razor\tools\netcoreapp3.0\rzc.dll";
+                string razorGeneratePath = configuration?.RazoGeneratorPath ?? @$"{dotnetFolder}sdk\{dotnetVersion}\Sdks\Microsoft.NET.Sdk.Razor\tools\netcoreapp3.0\rzc.dll";
                 var project = GetProjectPath(Path.GetDirectoryName(filepath.FullPath));
                 string projectName = Path.GetFileNameWithoutExtension(project.FileName);
                 var workspace = $"obj\\Debug\\{project.Type}\\";
@@ -356,41 +406,43 @@ namespace LivingThing.LiveBlazor
                     Type originalType = componentTypes.FirstOrDefault(t => t.FullName == newType.FullName);
                     if (originalType != null)
                     {
-
                         LiveComponentContext context = null;
                         liveContexts.TryGetValue(originalType, out context);
-                        if (context == null)
+                        if (context != null)
                         {
-                            context = new LiveComponentContext()
-                            {
-                                OriginalMethod = originalType.GetMethod("BuildRenderTree", BindingFlags.NonPublic | BindingFlags.Instance),
-                                NewType = newType,
-                                Replacer = typeof(Blazor).GetMethod(nameof(ReplaceBuildRenderTree))//.MakeGenericMethod(originalType)
-                            };
-                            liveContexts[originalType] = context;
-                        }
-                        else
-                        {
-                            context.OriginalMethod ??= originalType.GetMethod("BuildRenderTree", BindingFlags.NonPublic | BindingFlags.Instance);
-                            context.Replacer ??= typeof(Blazor).GetMethod(nameof(ReplaceBuildRenderTree));//.MakeGenericMethod(originalType)
                             context.NewType = newType;
-                        }
-                        currentType = originalType;
-                        try
-                        {
-                            harmony.Patch(context.OriginalMethod, transpiler: new HarmonyMethod(context.Replacer));
-                        }catch(Exception e)
-                        {
-                            Console.WriteLine(e.Message);
-                            Console.WriteLine(e.StackTrace);
-                            return;
-                        }
-                        context.Components.ForEach(c =>
-                        {
-                            Action rerender = () => stateHasChanged.Invoke(c, new object[] { });
-                            invokeAsync.Invoke(c, new object[] { rerender });
+                            currentType = originalType;
+                            try
+                            {
+                                harmony.Patch(context.OriginalMethod, transpiler: new HarmonyMethod(buildRenderTreeMethodPatcher));
+                                //patch all anonymous method of this type
+                                //var anonymousMethods = 
+                                //pathch typeInference class
+                                Type inferenceType = assembly.DefinedTypes.FirstOrDefault(t => t.Name == "TypeInference");
+                                if (inferenceType != null && context.OriginalTypeInference != null)
+                                {
+                                    currentTypeInference = inferenceType;
+                                    var methods = inferenceType.GetMethods();
+                                    foreach (var method in methods)
+                                    {
+                                        var originalMethod = context.OriginalTypeInference.GetMethod(method.Name);
+                                        harmony.Patch(originalMethod, transpiler: new HarmonyMethod(typeInferenceMethodsPatcher));
+                                    }
+                                }
 
-                        });
+                            }
+                            catch (Exception e)
+                            {
+                                Console.WriteLine(e.Message);
+                                Console.WriteLine(e.StackTrace);
+                                return;
+                            }
+                            context.Components.ForEach(c =>
+                            {
+                                Action rerender = () => stateHasChanged.Invoke(c, new object[] { });
+                                invokeAsync.Invoke(c, new object[] { rerender });
+                            });
+                        }
                     }
                 }
             });

@@ -31,9 +31,6 @@ namespace LivingThing.LiveBlazor
 			internal set
 			{
 				operand = value; 
-				if (value is Instruction)
-				{
-				}
 			}
 		}
 

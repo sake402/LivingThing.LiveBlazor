@@ -10,6 +10,12 @@ namespace LivingThing.LiveBlazor
 {
     internal class Compiler
     {
+        static MetadataReference[] References;
+        static Compiler()
+        {
+            References = AppDomain.CurrentDomain.GetAssemblies().Where(a => !a.IsDynamic && !string.IsNullOrEmpty(a.Location)).Select(a => MetadataReference.CreateFromFile(a.Location)).ToArray();
+        }
+
         public byte[] Compile(params string[] sourceCodes)
         {
             //Console.WriteLine($"Starting compilation of: '{file}'");
@@ -54,12 +60,11 @@ namespace LivingThing.LiveBlazor
                 var parsedSyntaxTree = SyntaxFactory.ParseSyntaxTree(code, options);
                 syntaxTrees.Add(parsedSyntaxTree);
             }
-            var references = AppDomain.CurrentDomain.GetAssemblies().Where(a=>!a.IsDynamic && !string.IsNullOrEmpty(a.Location)).Select(a => MetadataReference.CreateFromFile(a.Location)).ToArray();
 
             dllNumber++;
             return CSharpCompilation.Create($"_{dllNumber}.dll",
                 syntaxTrees.ToArray(),
-                references: references,
+                references: References,
                 options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
                     optimizationLevel: OptimizationLevel.Release,
                     assemblyIdentityComparer: DesktopAssemblyIdentityComparer.Default));
