@@ -41,9 +41,7 @@ What is not working yet
 Generic Component
 
 A razor file with @bind- that creates an binding Expression causes component excepton
-
 **ArgumentException: Argument types do not match**
-
 System.Linq.Expressions.Expression.Constant(object value, Type type)
 
 Client Side Blazor (Web Assembly)
