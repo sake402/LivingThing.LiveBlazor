@@ -36,5 +36,7 @@ We load the compiled assembly and search for the System.Type of the razor file c
 We patch the original ``BuildRenderTree`` method replacing its IL code with the ILCode of the newly compiled ``BuildRenderTree`` method and call StateHasChanged on all component instances of this type.
 
 
-
+What is not working yet
+---
+Generic Component
 
