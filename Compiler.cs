@@ -10,15 +10,15 @@ namespace LivingThing.LiveBlazor
 {
     internal class Compiler
     {
-        public byte[] Compile(string file, bool fileIsCode = false)
+        public byte[] Compile(params string[] sourceCodes)
         {
             //Console.WriteLine($"Starting compilation of: '{file}'");
 
-            var sourceCode = fileIsCode ? file : File.ReadAllText(file);
+            //var sourceCode = fileIsCode ? file : File.ReadAllText(file);
 
             using (var peStream = new MemoryStream())
             {
-                var result = GenerateCode(sourceCode).Emit(peStream);
+                var result = GenerateCode(sourceCodes).Emit(peStream);
 
                 if (!result.Success)
                 {
@@ -43,18 +43,22 @@ namespace LivingThing.LiveBlazor
         }
 
         int dllNumber;
-        private CSharpCompilation GenerateCode(string sourceCode)
+        private CSharpCompilation GenerateCode(params string[] sourceCode)
         {
-            var codeString =/* SourceText.From*/(sourceCode);
-            var options = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.CSharp8);
+            List<SyntaxTree> syntaxTrees = new List<SyntaxTree>();
+            foreach (var code in sourceCode)
+            {
+                //var codeString =/* SourceText.From*/(sourceCode);
+                var options = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.CSharp8);
 
-            var parsedSyntaxTree = SyntaxFactory.ParseSyntaxTree(codeString, options);
-
+                var parsedSyntaxTree = SyntaxFactory.ParseSyntaxTree(code, options);
+                syntaxTrees.Add(parsedSyntaxTree);
+            }
             var references = AppDomain.CurrentDomain.GetAssemblies().Where(a=>!a.IsDynamic && !string.IsNullOrEmpty(a.Location)).Select(a => MetadataReference.CreateFromFile(a.Location)).ToArray();
 
             dllNumber++;
             return CSharpCompilation.Create($"_{dllNumber}.dll",
-                new[] { parsedSyntaxTree },
+                syntaxTrees.ToArray(),
                 references: references,
                 options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
                     optimizationLevel: OptimizationLevel.Release,

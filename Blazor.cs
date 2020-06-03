@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Reactive.Linq;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using HarmonyLib;
@@ -37,32 +38,183 @@ namespace LivingThing.LiveBlazor
     {
         static Dictionary<Type, LiveComponentContext> liveContexts = new Dictionary<Type, LiveComponentContext>();
 
-        public static void Prefix(ComponentBase __instance)
+        public static bool Prefix(ComponentBase __instance)
         {
             var type = __instance.GetType();
             if (!liveContexts.ContainsKey(type))
             {
                 liveContexts[type] = new LiveComponentContext();
             }
-            var contexts = liveContexts[type];
-            if (!contexts.Components.Contains(__instance))
+            var context = liveContexts[type];
+            if (!context.Components.Contains(__instance))
             {
-                contexts.Components.Add(__instance);
+                context.Components.Add(__instance);
             }
+            //if (context.NewType != null)
+            //{
+            //    Type newCompiledType = context.NewType;
+            //    var newRenderTree = newCompiledType.GetMethod("BuildRenderTree", BindingFlags.NonPublic | BindingFlags.Instance);
+            //    newRenderTree.Invoke(__instance, new object[] { null });
+            //    return false;
+            //}
+            return true;
         }
 
         static Type currentType;
-        public static IEnumerable<CodeInstruction> ReplaceBuildRenderTree/*<TComponent>*/(IEnumerable<CodeInstruction> instructions)
+        public static IEnumerable<CodeInstruction> ReplaceBuildRenderTree/*<TComponent>*/(IEnumerable<CodeInstruction> instructions, ILGenerator generator)
         {
             var context = liveContexts[currentType];//[typeof(TComponent)];
             Type newCompiledType = context.NewType;
             var newRenderTree = newCompiledType.GetMethod("BuildRenderTree", BindingFlags.NonPublic | BindingFlags.Instance);
+
             var newInstructions = newRenderTree.GetInstructions();
-            var newCodeInstructions = newInstructions.Select(i =>
+            var labelledInstructions = newInstructions.Where(l => l.Operand is Instruction);
+            Dictionary<Instruction, Label> instructionLabels = new Dictionary<Instruction, Label>();
+            foreach(var instruction in labelledInstructions)
             {
-                return new CodeInstruction(i.OpCode, i.Operand);
-            }).ToArray();
-            return newCodeInstructions;
+                instructionLabels[instruction.Operand as Instruction] = generator.DefineLabel();
+            }
+            foreach(var instruction in newInstructions)
+            {
+                Label label;
+                if (instructionLabels.TryGetValue(instruction, out label))
+                {
+                    generator.MarkLabel(label);
+                }
+                switch (instruction.OpCode.OperandType)
+                {
+                    default:
+                        switch (instruction.Operand)
+                        {
+                            case bool i:
+                                generator.Emit(instruction.OpCode, i == false ? 0 : 1);
+                                break;
+                            case byte i:
+                                generator.Emit(instruction.OpCode, i);
+                                break;
+                            case sbyte i:
+                                //STRANGE: pushing an int8 onto stack throws object reference exception
+                                //so we change the instruction to push int32
+                                if (instruction.OpCode == OpCodes.Ldc_I4_S) 
+                                {
+                                    generator.Emit(OpCodes.Ldc_I4, (int)i);
+                                }
+                                else
+                                {
+                                    generator.Emit(instruction.OpCode, i);
+                                }
+                                break;
+                            case int i:
+                                generator.Emit(instruction.OpCode, i);
+                                break;
+                            case uint i:
+                                generator.Emit(instruction.OpCode, i);
+                                break;
+                            case long i:
+                                generator.Emit(instruction.OpCode, i);
+                                break;
+                            case float i:
+                                generator.Emit(instruction.OpCode, i);
+                                break;
+                            case double i:
+                                generator.Emit(instruction.OpCode, i);
+                                break;
+                            case string i:
+                                generator.Emit(instruction.OpCode, i);
+                                break;
+                            case Type i:
+                                generator.Emit(instruction.OpCode, i);
+                                break;
+                            case MethodInfo i:
+                                generator.Emit(instruction.OpCode, i);
+                                break;
+                            default:
+                                if (instruction.Operand  != null)
+                                {
+                                    throw new Exception($"UnImplemented Instruction {instruction.OpCode} with operand {instruction.Operand}");
+                                }
+                                generator.Emit(instruction.OpCode);
+                                break;
+                        }
+                        break;
+                    case OperandType.ShortInlineBrTarget:
+                    case OperandType.InlineBrTarget:
+                        Label branchLabel = instructionLabels[instruction.Operand as Instruction];
+                        generator.Emit(instruction.OpCode, branchLabel);
+                        break;
+                }
+            }
+
+            //var newCodes = PatchProcessor.ReadMethodBody(newRenderTree);
+            //foreach(var code in newCodes)
+            //{
+            //    switch (code.Key.OperandType)
+            //    {
+            //        default:
+            //            switch (code.Value)
+            //            {
+            //                case bool i:
+            //                    generator.Emit(code.Key, i == false ? 0 : 1);
+            //                    break;
+            //                case byte i:
+            //                    generator.Emit(code.Key, i);
+            //                    break;
+            //                case sbyte i:
+            //                    //generator.Emit(code.Key, i);
+            //                    break;
+            //                case int i:
+            //                    generator.Emit(code.Key, i);
+            //                    break;
+            //                case uint i:
+            //                    generator.Emit(code.Key, i);
+            //                    break;
+            //                case long i:
+            //                    generator.Emit(code.Key, i);
+            //                    break;
+            //                case float i:
+            //                    generator.Emit(code.Key, i);
+            //                    break;
+            //                case double i:
+            //                    generator.Emit(code.Key, i);
+            //                    break;
+            //                case string i:
+            //                    generator.Emit(code.Key, i);
+            //                    break;
+            //                case Type i:
+            //                    generator.Emit(code.Key, i);
+            //                    break;
+            //                case MethodInfo i:
+            //                    generator.Emit(code.Key, i);
+            //                    break;
+            //                default:
+            //                    if (code.Value != null)
+            //                    {
+
+            //                    }
+            //                    generator.Emit(code.Key);
+            //                    break;
+            //            }
+            //            break;
+            //        case OperandType.ShortInlineBrTarget:
+            //        case OperandType.InlineBrTarget:
+            //            break;
+            //    }
+            //}
+
+
+            //return newCodes.Select(c => new CodeInstruction(c.Key, c.Value)).ToArray();
+            //var newInstructions = newRenderTree.GetInstructions();
+            //var newCodeInstructions = newInstructions.Select(i =>
+            //{
+            //    //var operand = i.Operand;
+            //    //if (operand is Instruction ins)
+            //    //{
+            //    //    operand = new CodeInstruction(ins.OpCode, ins.Operand);
+            //    //}
+            //    return new CodeInstruction(i.OpCode, operand);
+            //}).ToArray();
+            //return newCodeInstructions;
+            return new CodeInstruction[] { new CodeInstruction(OpCodes.Ret) };
         }
 
         static ProjectInfo GetProjectPath(string path)
@@ -96,6 +248,8 @@ namespace LivingThing.LiveBlazor
             return GetProjectPath(path);
         }
 
+        static Harmony harmony;
+        static ObservableFileSystemWatcher watcher;
         public static async Task Live(LiveConfiguration configuration = null)
         {
             //Extract LiveBlazor.zip to a temporary folter
@@ -114,16 +268,14 @@ namespace LivingThing.LiveBlazor
             ////prebuild project enabling restore, so we dont have to restor anymore, which is faster
             //$"cd {workingDirectory} & dotnet build".Bash();
 
-            string dotnetPath = (await "where dotnet".CLI()).StdOut.Trim();
-            string dotnetVersion = (await "dotnet --version".CLI()).StdOut.Trim();
-            var dotnetFolder = Path.GetDirectoryName(dotnetPath) + "\\";
+            harmony = new Harmony("com.liveblazor.livingthing");
+            var compiler = new Compiler();
 
-            var harmony = new Harmony("com.liveblazor.livingthing");
             var invokeAsync = typeof(ComponentBase).GetMethod("InvokeAsync", bindingAttr:BindingFlags.NonPublic | BindingFlags.Instance, types:new Type[] { typeof(Action) }, binder:null, modifiers:null);
             var stateHasChanged = typeof(ComponentBase).GetMethod("StateHasChanged", BindingFlags.NonPublic | BindingFlags.Instance);
 
             //find all components in all assemblies
-            var componentTypes = AppDomain.CurrentDomain.GetAssemblies().SelectMany(a => a.GetTypes()).Where(t => !t.IsAbstract && t.MemberType == MemberTypes.TypeInfo && typeof(ComponentBase).IsAssignableFrom(t)).ToArray();
+            var componentTypes = AppDomain.CurrentDomain.GetAssemblies().SelectMany(a => a.GetTypes()).Where(t => !t.IsAbstract && !t.ContainsGenericParameters && t.MemberType == MemberTypes.TypeInfo && typeof(ComponentBase).IsAssignableFrom(t)).ToArray();
             var prefix = typeof(Blazor).GetMethod(nameof(Prefix));
             foreach (var type in componentTypes)
             {
@@ -144,14 +296,26 @@ namespace LivingThing.LiveBlazor
                 }
             }
 
-            var watcher = new ObservableFileSystemWatcher(c =>
+            watcher = new ObservableFileSystemWatcher(c =>
             {
                 c.Path = watchPath;
                 c.IncludeSubdirectories = true;
-                c.Filters.Add("*.razor");
+                c.Filter = "*.razor";
+                c.NotifyFilter = NotifyFilters.Attributes |
+                NotifyFilters.CreationTime |
+                NotifyFilters.FileName |
+                NotifyFilters.LastAccess |
+                NotifyFilters.LastWrite |
+                NotifyFilters.Size |
+                NotifyFilters.Security;
+                //c.Filters.Add("*.razor");
             });
 
             var changes = watcher.Changed.Throttle(TimeSpan.FromSeconds(.5));
+
+            string dotnetPath = (await "where dotnet".CLI()).StdOut.Trim();
+            string dotnetVersion = (await "dotnet --version".CLI()).StdOut.Trim();
+            var dotnetFolder = Path.GetDirectoryName(dotnetPath) + "\\";
 
             changes.Subscribe(async filepath =>
             {
@@ -167,27 +331,27 @@ namespace LivingThing.LiveBlazor
                 await $"cd {project.Path} & {compile}".CLI();
 
                 var file = File.ReadAllText(outputPath);
-                var csFile = Path.ChangeExtension(filepath.FullPath, ".cs");
+                List<string> sourceCodes = new List<string>() { file };
+                var csFile = Path.ChangeExtension(filepath.FullPath, ".razor.cs");
                 if (File.Exists(csFile))
                 {
                     var csFileContent = File.ReadAllText(csFile);
-                    file += "\r\n" + csFileContent;
+                    sourceCodes.Add(csFileContent);
                 }
 
 
-                var compiler = new Compiler();
-                var code = compiler.Compile(file, true);
+                var code = compiler.Compile(sourceCodes.ToArray());
 
                 using (var asm = new MemoryStream(code))
                 {
                     var assemblyLoadContext = new UnloadableAssemblyLoadContext();
 
-                    //var assembly = assemblyLoadContext.LoadFromStream(asm);
-                    var assembly = Assembly.Load(code);//.LoadFromStream(asm);
+                    var assembly = assemblyLoadContext.LoadFromStream(asm);
+                    // var assembly = Assembly.Load(code);//.LoadFromStream(asm);
                     Type newType = assembly.ExportedTypes.First(t => t.Name == Path.GetFileNameWithoutExtension(filepath.Name));
                     //Type newType = AppDomain.CurrentDomain.GetAssemblies().SelectMany(a => a.GetTypes()).First(t => t.Name == Path.GetFileNameWithoutExtension(filepath.Name));
 
-                    //assemblyLoadContext.Unload();
+                    assemblyLoadContext.Unload();
 
                     Type originalType = componentTypes.FirstOrDefault(t => t.FullName == newType.FullName);
                     if (originalType != null)
@@ -212,7 +376,15 @@ namespace LivingThing.LiveBlazor
                             context.NewType = newType;
                         }
                         currentType = originalType;
-                        harmony.Patch(context.OriginalMethod, transpiler: new HarmonyMethod(context.Replacer));
+                        try
+                        {
+                            harmony.Patch(context.OriginalMethod, transpiler: new HarmonyMethod(context.Replacer));
+                        }catch(Exception e)
+                        {
+                            Console.WriteLine(e.Message);
+                            Console.WriteLine(e.StackTrace);
+                            return;
+                        }
                         context.Components.ForEach(c =>
                         {
                             Action rerender = () => stateHasChanged.Invoke(c, new object[] { });
