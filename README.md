@@ -40,4 +40,4 @@ What is not working yet
 ---
 Generic Component
 
-Client Side Blazor
+Client Side Blazor (Web Assembly)
