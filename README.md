@@ -35,12 +35,13 @@ We load the compiled assembly and search for the System.Type of the razor file c
 
 We patch the original ``BuildRenderTree`` method replacing its IL code with the ILCode of the newly compiled ``BuildRenderTree`` method and call StateHasChanged on all component instances of this type.
 
+
 What is not working yet
 ---
-For some unknown reason, if after patching the ``BuildRenderTree`` one type, we also try to patch another ``BuildRenderTree`` entirely different from the first one, Harmony throws exception. This happens when you have editted A.razor and then try to edit B.razor.
+Generic Component
 
-If a new patch contains a branch instruction, exception. Converting the MethodInfo.GetILAsByteArray() to opcodes is not perfect yet.
+A razor file with @bind- that creates an binding Expression causes component excepton
+**ArgumentException: Argument types do not match**
+System.Linq.Expressions.Expression.Constant(object value, Type type)
 
-
-
-
+Client Side Blazor (Web Assembly)
