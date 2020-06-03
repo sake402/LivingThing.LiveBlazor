@@ -40,3 +40,4 @@ What is not working yet
 ---
 Generic Component
 
+Client Side Blazor
